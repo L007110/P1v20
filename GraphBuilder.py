@@ -267,6 +267,38 @@ class GraphBuilder:
                     })
         return proximity_edges
 
+    def _extract_node_features(self, nodes, dqn_list, vehicle_list):
+        """
+        提取节点特征矩阵
+        """
+        all_features = []
+        node_types = []
+
+        # 1. 收集 RSU 特征
+        for rsu_node in nodes['rsu_nodes']:
+            all_features.append(rsu_node['features'])
+            node_types.append(0)  # 0 代表 RSU 类型
+
+        # 2. 收集 Vehicle 特征
+        for vehicle_node in nodes['vehicle_nodes']:
+            all_features.append(vehicle_node['features'])
+            node_types.append(1)  # 1 代表 Vehicle 类型
+
+        # 3. 维度对齐 (Padding)
+        # 确保所有特征向量长度一致，不足的补 0
+        feature_lengths = [len(f) for f in all_features]
+        max_len = max(feature_lengths) if feature_lengths else 0
+
+        for i in range(len(all_features)):
+            if len(all_features[i]) < max_len:
+                all_features[i].extend([0.0] * (max_len - len(all_features[i])))
+
+        # 4. 转换为 Tensor
+        return {
+            'features': torch.FloatTensor(all_features),
+            'types': torch.LongTensor(node_types)
+        }
+
     def _extract_edge_features(self, edges, nodes):
         edge_features = {}
         node_id_to_index = {node['id']: idx for idx, node in enumerate(nodes['rsu_nodes'] + nodes['vehicle_nodes'])}
@@ -302,30 +334,7 @@ class GraphBuilder:
             }
         return edge_features
 
-    def _extract_edge_features(self, edges, nodes):
-        edge_features = {}
-        node_id_to_index = {node['id']: idx for idx, node in enumerate(nodes['rsu_nodes'] + nodes['vehicle_nodes'])}
 
-        for edge_type in self.edge_types:
-            edge_list = edges[edge_type]
-            if not edge_list:
-                edge_features[edge_type] = None
-                continue
-
-            edge_indices = []
-            edge_attrs = []
-            for edge in edge_list:
-                edge_indices.append([node_id_to_index[edge['source']], node_id_to_index[edge['target']]])
-                if edge_type == 'communication':
-                    edge_attrs.append(edge['features'])
-                else:
-                    edge_attrs.append([edge['weight']] + [0.0] * (self.comm_edge_feature_dim - 1))
-
-            edge_features[edge_type] = {
-                'edge_index': torch.LongTensor(edge_indices).t().contiguous(),
-                'edge_attr': torch.FloatTensor(edge_attrs)
-            }
-        return edge_features
 
     def build_spatial_subgraph(self, center_dqn, all_dqns, all_vehicles, epoch, radius=GNN_INFERENCE_RADIUS):
         center_pos = center_dqn.bs_loc

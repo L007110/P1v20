@@ -35,7 +35,7 @@ if USE_GNN_ENHANCEMENT:
 else:
     USE_PRIORITY_REPLAY = False  # No-GNN 基线模式下启用优先级经验回放(目前先关掉，变成消融实验）
 GNN_REPLAY_CAPACITY = 2000   # GNN 经验缓冲区的容量 (图很占内存, 设小一点)
-GNN_BATCH_SIZE = 16          # GNN 训练的批次大小
+GNN_BATCH_SIZE = 64         # GNN 训练的批次大小
 GNN_TRAIN_START_SIZE = 100   # 缓冲区中至少有多少经验才开始训练 GNN
 GNN_SOFT_UPDATE_TAU = 0.005  # GNN 目标网络软更新的 TAU
 GNN_OUTPUT_DIM = 64         # GNN输出维度
@@ -96,7 +96,7 @@ global_dqn_list = []
 
 # 强化学习超参数
 RL_ALPHA = 0.0001
-RL_ALPHA_GNN = 0.00001
+RL_ALPHA_GNN = 0.0001
 RL_EPSILON = 0.9
 RL_EPSILON_MIN = 0.01
 RL_EPSILON_MAX = 0.99

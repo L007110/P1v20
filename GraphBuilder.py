@@ -145,12 +145,75 @@ class GraphBuilder:
         return features
 
     def _create_edges(self, nodes, dqn_list, vehicle_list, epoch):
+        # 1. 先计算通信边，因为我们需要知道谁在服务谁
+        comm_edges = self._calculate_communication_edges(nodes, dqn_list, vehicle_list)
+
+        # 2. 建立一个映射表：记录哪个 RSU 正在服务哪个 Vehicle
+        # 格式: {rsu_node_id: set(served_vehicle_node_ids)}
+        rsu_service_map = defaultdict(set)
+        for edge in comm_edges:
+            rsu_service_map[edge['source']].add(edge['target'])
+
         edges = {
-            'communication': self._calculate_communication_edges(nodes, dqn_list, vehicle_list),
-            'interference': [],
+            'communication': comm_edges,
+            # 3. 传入服务映射表来计算正确的干扰边
+            'interference': self._calculate_interference_edges(nodes, rsu_service_map),
             'proximity': self._calculate_proximity_edges(nodes, dqn_list, vehicle_list)
         }
         return edges
+
+    def _calculate_interference_edges(self, nodes, rsu_service_map):
+        """
+        物理感知 + 信道模型一致的干扰边构建
+        """
+        interference_edges = []
+        interf_threshold = self.interference_threshold
+
+
+        for rsu_node in nodes['rsu_nodes']:
+            rsu_id = rsu_node['id']
+            rsu_pos = np.array(rsu_node['position'])
+            my_served_vehicles = rsu_service_map.get(rsu_id, set())
+
+            for vehicle_node in nodes['vehicle_nodes']:
+                veh_id = vehicle_node['id']
+                if veh_id in my_served_vehicles: continue  # 排除自己人
+
+                veh_pos = np.array(vehicle_node['position'])
+                dist = np.linalg.norm(rsu_pos - veh_pos)
+
+                if dist < interf_threshold:
+
+                    # 计算准确的 Path Loss (包含 UMi 模型的确定性损耗 + 阴影衰落)
+                    # 为了严谨，我们加上高度差 (假设 RSU 10m, 车 1.5m)
+                    delta_h = 10.0 - 1.5
+                    dist_3d = np.sqrt(dist ** 2 + delta_h ** 2)
+
+                    # 调用 ChannelModel
+                    total_pl_db, _, _ = global_channel_model.calculate_path_loss(dist_3d)
+
+                    # === 特征工程 ===
+                    # 1. 权重: 距离越近权重越大 (用于聚合)
+                    weight = 1.0 - (dist / interf_threshold)
+
+                    # 2. 距离归一化 (Input Feature 1)
+                    norm_dist = dist / 1000.0
+
+                    # 3. Path Loss 归一化 (Input Feature 2)
+                    # 你的通信边是除以 100.0，这里保持一致
+                    norm_pl = total_pl_db / 100.0
+
+                    # 4. 构造 4 维特征: [权重, 归一化距离, 真实PathLoss, 0.0]
+                    features = [weight, norm_dist, norm_pl, 0.0]
+
+                    interference_edges.append({
+                        'source': veh_id,
+                        'target': rsu_id,
+                        'type': 'interference',
+                        'features': features
+                    })
+
+        return interference_edges
 
     def _calculate_communication_edges(self, nodes, dqn_list, vehicle_list):
         communication_edges = []
@@ -188,6 +251,7 @@ class GraphBuilder:
                         pass
         return communication_edges
 
+
     def _calculate_proximity_edges(self, nodes, dqn_list, vehicle_list):
         proximity_edges = []
         all_nodes = nodes['rsu_nodes'] + nodes['vehicle_nodes']
@@ -203,23 +267,40 @@ class GraphBuilder:
                     })
         return proximity_edges
 
-    def _extract_node_features(self, nodes, dqn_list, vehicle_list):
-        all_features = []
-        node_types = []
-        for rsu_node in nodes['rsu_nodes']:
-            all_features.append(rsu_node['features'])
-            node_types.append(0)
-        for vehicle_node in nodes['vehicle_nodes']:
-            all_features.append(vehicle_node['features'])
-            node_types.append(1)
+    def _extract_edge_features(self, edges, nodes):
+        edge_features = {}
+        node_id_to_index = {node['id']: idx for idx, node in enumerate(nodes['rsu_nodes'] + nodes['vehicle_nodes'])}
 
-        feature_lengths = [len(f) for f in all_features]
-        max_len = max(feature_lengths) if feature_lengths else 0
-        for i in range(len(all_features)):
-            if len(all_features[i]) < max_len:
-                all_features[i].extend([0.0] * (max_len - len(all_features[i])))
+        for edge_type in self.edge_types:
+            edge_list = edges[edge_type]
+            if not edge_list:
+                edge_features[edge_type] = None
+                continue
 
-        return {'features': torch.FloatTensor(all_features), 'types': torch.LongTensor(node_types)}
+            edge_indices = []
+            edge_attrs = []
+            for edge in edge_list:
+                # 构建边索引
+                edge_indices.append([node_id_to_index[edge['source']], node_id_to_index[edge['target']]])
+                # 只要字典里有 'features' 就直接用，没有再补 0
+
+                if 'features' in edge:
+                    # 情况 A: 这是一个包含完整 4 维特征的边 (通信边 OR 干扰边)
+                    edge_attrs.append(edge['features'])
+                elif 'weight' in edge:
+                    # 情况 B: 这是一个只有权重的边 (比如 proximity)，需要补 0 对齐到 4 维
+                    # padding 逻辑: [weight, 0, 0, 0]
+                    padding = [0.0] * (self.comm_edge_feature_dim - 1)
+                    edge_attrs.append([edge['weight']] + padding)
+                else:
+                    # 情况 C: 既没特征也没权重 (防御性编程)，全补 0
+                    edge_attrs.append([0.0] * self.comm_edge_feature_dim)
+
+            edge_features[edge_type] = {
+                'edge_index': torch.LongTensor(edge_indices).t().contiguous(),
+                'edge_attr': torch.FloatTensor(edge_attrs)  # 转换为 Tensor
+            }
+        return edge_features
 
     def _extract_edge_features(self, edges, nodes):
         edge_features = {}

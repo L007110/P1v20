@@ -796,12 +796,16 @@ def test():
                             directional_gain = new_reward_calculator._calculate_directional_gain(horizontal_dir,
                                                                                                  vertical_dir)
                             total_power_W = TRANSMITTDE_POWER * power_ratio * beam_count * directional_gain
+                            # 1. 获取正在服务的车辆 (发射源)
+                            serving_vehicle = dqn.vehicle_in_dqn_range_by_distance[0]
+
+                            # 2. 使用车辆的位置作为发射源位置
                             active_v2v_interferers.append(
-                                {'tx_pos': (dqn.bs_loc[0], dqn.bs_loc[1]), 'power_W': total_power_W})
+                                {'tx_pos': serving_vehicle.curr_loc, 'power_W': total_power_W})
                     else:
                         dqn.action = None
 
-                # ================= 修复开始 =================
+
                 # Second Loop: 在 test() 循环中补充 V2V 链路计算
                 # 利用已经构建好的 active_v2v_interferers
                 for dqn in global_dqn_list:
@@ -823,7 +827,7 @@ def test():
                         dqn.delay_list.append(1.0)
                         dqn.snr_list.append(-100.0)
                         dqn.v2v_success_list.append(0)
-                # ================= 修复结束 =================
+
 
                 total_v2i_capacity_bps = 0.0
                 for link in V2I_LINK_POSITIONS:

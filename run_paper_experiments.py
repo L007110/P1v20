@@ -62,48 +62,48 @@ def main():
     # 第一阶段: 训练 (收敛性分析)
     # 在固定密度 (N=60) 下训练所有模型
     # =========================================================================
-    print("\n" + "=" * 50)
-    print("PHASE 1: TRAINING (Convergence Analysis)")
-    print("=" * 50)
-
-    for model in MODELS:
-        print(f"\n>>> Training Model: {model['label']} <<<")
-
-        # 构造训练命令
-        cmd = (
-            f"{PYTHON_EXEC} Main.py --run_mode TRAIN "
-            f"--epochs {TRAIN_EPOCHS} "
-            f"--seed {SEED} "
-            f"--vehicle_count {TRAIN_VEHICLES} "
-            f"--use_gnn {model['gnn']} "
-            f"--gnn_arch {model['arch']} "
-            f"--dueling {model['dueling']} "
-        )
-        run_command(cmd)
-
-        # 移动/重命名结果文件
-        src_csv = "training_results/global_metrics.csv"
-        dst_csv = f"{RESULTS_DIR}/train_convergence_{model['id']}.csv"
-
-        # 确定生成的模型文件名 (Main.py 中的逻辑)
-        if model['gnn'] == "True":
-            src_model = f"model_{model['arch']}.pt"
-        else:
-            src_model = "model_NoGNN_Baseline_v2.pth" if model['dueling'] == "True" else "model_Standard_DQN.pth"
-
-        dst_model = f"{RESULTS_DIR}/model_{model['id']}.pth"
-
-        # 保存 CSV
-        if os.path.exists(src_csv):
-            shutil.copy(src_csv, dst_csv)
-            print(f"Saved training log to: {dst_csv}")
-
-        # 保存模型权重 (供测试阶段使用)
-        if os.path.exists(src_model):
-            shutil.copy(src_model, dst_model)
-            print(f"Saved model checkpoint to: {dst_model}")
-        else:
-            print(f"Warning: Model file {src_model} not found.")
+    # print("\n" + "=" * 50)
+    # print("PHASE 1: TRAINING (Convergence Analysis)")
+    # print("=" * 50)
+    #
+    # for model in MODELS:
+    #     print(f"\n>>> Training Model: {model['label']} <<<")
+    #
+    #     # 构造训练命令
+    #     cmd = (
+    #         f"{PYTHON_EXEC} Main.py --run_mode TRAIN "
+    #         f"--epochs {TRAIN_EPOCHS} "
+    #         f"--seed {SEED} "
+    #         f"--vehicle_count {TRAIN_VEHICLES} "
+    #         f"--use_gnn {model['gnn']} "
+    #         f"--gnn_arch {model['arch']} "
+    #         f"--dueling {model['dueling']} "
+    #     )
+    #     run_command(cmd)
+    #
+    #     # 移动/重命名结果文件
+    #     src_csv = "training_results/global_metrics.csv"
+    #     dst_csv = f"{RESULTS_DIR}/train_convergence_{model['id']}.csv"
+    #
+    #     # 确定生成的模型文件名 (Main.py 中的逻辑)
+    #     if model['gnn'] == "True":
+    #         src_model = f"model_{model['arch']}.pt"
+    #     else:
+    #         src_model = "model_NoGNN_Baseline_v2.pth" if model['dueling'] == "True" else "model_Standard_DQN.pth"
+    #
+    #     dst_model = f"{RESULTS_DIR}/model_{model['id']}.pth"
+    #
+    #     # 保存 CSV
+    #     if os.path.exists(src_csv):
+    #         shutil.copy(src_csv, dst_csv)
+    #         print(f"Saved training log to: {dst_csv}")
+    #
+    #     # 保存模型权重 (供测试阶段使用)
+    #     if os.path.exists(src_model):
+    #         shutil.copy(src_model, dst_model)
+    #         print(f"Saved model checkpoint to: {dst_model}")
+    #     else:
+    #         print(f"Warning: Model file {src_model} not found.")
 
     # =========================================================================
     # 第二阶段: 可扩展性测试 (密度分析)

@@ -722,6 +722,7 @@ def test():
                 active_v2v_interferers = []
                 step_decision_times = []
 
+                # First Loop: 动作选择 & 构建干扰列表
                 for dqn in global_dqn_list:
                     dqn.vehicle_exist_curr = False
                     base_state = []
@@ -751,7 +752,21 @@ def test():
                         if USE_UMI_NLOS_MODEL and hasattr(dqn, 'update_csi_states'):
                             dqn.update_csi_states(dqn.vehicle_in_dqn_range_by_distance, is_current=True)
                         if not hasattr(dqn, 'prev_v2i_interference'): dqn.prev_v2i_interference = 0.0
-                        v2i_state = [dqn.prev_v2i_interference]
+
+                        # [V2I 维度修复]
+                        interf_log = np.log10(dqn.prev_v2i_interference + 1e-20)
+                        interf_norm = (interf_log + 20) / 14.0
+
+                        dir_x, dir_y = 0.0, 0.0
+                        if V2I_LINK_POSITIONS and dqn.vehicle_in_dqn_range_by_distance:
+                            target_rx = V2I_LINK_POSITIONS[0]['rx']
+                            curr_pos = dqn.vehicle_in_dqn_range_by_distance[0].curr_loc
+                            dx, dy = target_rx[0] - curr_pos[0], target_rx[1] - curr_pos[1]
+                            d = np.sqrt(dx ** 2 + dy ** 2) + 1e-9
+                            dir_x, dir_y = dx / d, dy / d
+
+                        v2i_state = [interf_norm, dir_x, dir_y]
+
                         dqn.curr_state = base_state + dqn.csi_states_curr + v2i_state
                         dqn.epsilon = 0.0
 
@@ -785,6 +800,30 @@ def test():
                                 {'tx_pos': (dqn.bs_loc[0], dqn.bs_loc[1]), 'power_W': total_power_W})
                     else:
                         dqn.action = None
+
+                # ================= 修复开始 =================
+                # Second Loop: 在 test() 循环中补充 V2V 链路计算
+                # 利用已经构建好的 active_v2v_interferers
+                for dqn in global_dqn_list:
+                    if dqn.vehicle_exist_curr and dqn.vehicle_in_dqn_range_by_distance:
+                        # 借用 reward calculator 中的记录函数，或者手动计算
+                        # 注意：需要传入 active_v2v_interferers
+                        new_reward_calculator.calculate_complete_reward(
+                            dqn,
+                            dqn.vehicle_in_dqn_range_by_distance,
+                            dqn.action,
+                            active_v2v_interferers
+                        )
+                    else:
+                        # 如果没有车或未激活，记录默认失败值
+                        if not hasattr(dqn, 'delay_list'): dqn.delay_list = []
+                        if not hasattr(dqn, 'snr_list'): dqn.snr_list = []
+                        if not hasattr(dqn, 'v2v_success_list'): dqn.v2v_success_list = []
+                        # 记录一次失败数据，保持列表长度一致
+                        dqn.delay_list.append(1.0)
+                        dqn.snr_list.append(-100.0)
+                        dqn.v2v_success_list.append(0)
+                # ================= 修复结束 =================
 
                 total_v2i_capacity_bps = 0.0
                 for link in V2I_LINK_POSITIONS:
@@ -901,7 +940,7 @@ if __name__ == "__main__":
     print(f"  > GNN Enabled: {use_gnn_flag}")
     print(f"  > GNN Arch: {Parameters.GNN_ARCH}")
     print(f"  > Dueling DQN: {Parameters.USE_DUELING_DQN}")
-    print(f"  > Vehicle Count: {Parameters.NUM_VEHICLES}")
+    print(f"  > Vehicle Count: {getattr(Parameters, 'NUM_VEHICLES', 'Default/Test Loop')}")
     print(f"  > SNR Multiplier: {Parameters.SNR_MULTIPLIER}")
     print("=" * 30)
 

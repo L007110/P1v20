@@ -33,7 +33,7 @@ MODELS = [
     {
         "id": "NoGNN_Dueling",
         "label": "No-GNN (Dueling DQN)",
-        "gnn": "False", "arch": "HYBRID", "dueling": "True"  # GNN关掉时架构参数会被忽略
+        "gnn": "False", "arch": "HYBRID", "dueling": "True"
     },
     {
         "id": "NoGNN_Standard",

@@ -12,7 +12,7 @@ FILES = {
     "No-GNN (Dueling)": "train_convergence_NoGNN_Dueling.csv",
     "No-GNN (Standard)": "train_convergence_NoGNN_Standard.csv"
 }
-
+INPUT_DIR = "paper_results"
 OUTPUT_DIR = "paper_plots_training"
 if not os.path.exists(OUTPUT_DIR):
     os.makedirs(OUTPUT_DIR)

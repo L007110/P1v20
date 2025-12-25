@@ -228,6 +228,8 @@ def traditional_training_step(dqn, device):
 def rl(mean_loss_across_epochs=None, gnn_optimizer=None, device=None):
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    #定义训练要覆盖的密度范围
+    DENSITY_LEVELS = [20, 40, 60, 80, 100, 120]
     epoch = 1
     global_vehicle_id = 0
     overall_vehicle_list = []
@@ -258,8 +260,32 @@ def rl(mean_loss_across_epochs=None, gnn_optimizer=None, device=None):
     max_epochs = Parameters.RL_N_EPOCHS if hasattr(Parameters, 'RL_N_EPOCHS') else 1500
 
     while epoch <= max_epochs:
+        # 动态密度调度器 (Dynamic Density Scheduler)
+        # 每 50 个 Epoch 随机切换一次密度
+        if epoch % 50 == 0:
+
+            # 1. 随机选择一个新的密度
+            new_target = np.random.choice(DENSITY_LEVELS)
+
+            # 2. 更新全局目标 (告诉环境我们要多少车)
+            Parameters.TRAINING_VEHICLE_TARGET = new_target
+
+            print(f"\n" + "=" * 50)
+            print(f"[Dynamic Density] Epoch {epoch}: Switching target to {new_target} Vehicles!")
+            print("=" * 50 + "\n")
+
+            # 3. 【关键】强制裁剪多余车辆 (Pruning)
+            # 如果从 100 辆切到 20 辆，必须立刻删掉 80 辆，否则模型会面对错误的密度
+            if len(overall_vehicle_list) > new_target:
+                # 随机保留 new_target 辆
+                overall_vehicle_list = random.sample(overall_vehicle_list, new_target)
+                print(f"   -> Pruned excess vehicles. Current count: {len(overall_vehicle_list)}")
         # 步骤 1: 车辆移动
-        global_vehicle_id, overall_vehicle_list = vehicle_movement(global_vehicle_id, overall_vehicle_list)
+        global_vehicle_id, overall_vehicle_list = vehicle_movement(
+            global_vehicle_id,
+            overall_vehicle_list,
+            target_count=Parameters.TRAINING_VEHICLE_TARGET
+        )
 
         loss_list_per_epoch = []
         mean_loss = 0.0
@@ -722,7 +748,12 @@ def test():
                 global_vehicle_id, overall_vehicle_list = vehicle_movement(
                     global_vehicle_id, overall_vehicle_list, target_count=vehicle_count
                 )
-            print(f"    >>> Warm-up done. Current vehicles: {len(overall_vehicle_list)}")
+            # 再多跑 50 步，让刚生成的车从边缘开到路中间
+            for _ in range(50):
+                global_vehicle_id, overall_vehicle_list = vehicle_movement(
+                    global_vehicle_id, overall_vehicle_list, target_count=vehicle_count
+                )
+            print(f"    >>> Ready. Current vehicles: {len(overall_vehicle_list)}")
 
             for i_episode in range(TEST_EPISODES_PER_COUNT):
                 global_vehicle_id, overall_vehicle_list = vehicle_movement(global_vehicle_id, overall_vehicle_list,
@@ -894,7 +925,7 @@ if __name__ == "__main__":
     parser.add_argument("--delay_mul", type=float, default=1.0, help="Delay Weight Multiplier")
     parser.add_argument("--power_mul", type=float, default=1.0, help="Power Weight Multiplier")
 
-    # --- 论文实验关键参数 (Scalability & Ablation) ---
+    # --- 实验关键参数 (Scalability & Ablation) ---
     # [修改点 1] 车辆密度 (Scalability)
     parser.add_argument('--vehicle_count', type=int, default=None,
                         help='Override vehicle count for scalability test (e.g., 20, 40, 60)')

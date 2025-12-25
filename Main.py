@@ -716,6 +716,14 @@ def test():
             global_vehicle_id = 0
             overall_vehicle_list = []
 
+            print(f"    >>> Warming up environment to reach {vehicle_count} vehicles...")
+            # 跑 50-100 步，只移动和生车，不计算 Reward，不计入统计
+            for _ in range(100):
+                global_vehicle_id, overall_vehicle_list = vehicle_movement(
+                    global_vehicle_id, overall_vehicle_list, target_count=vehicle_count
+                )
+            print(f"    >>> Warm-up done. Current vehicles: {len(overall_vehicle_list)}")
+
             for i_episode in range(TEST_EPISODES_PER_COUNT):
                 global_vehicle_id, overall_vehicle_list = vehicle_movement(global_vehicle_id, overall_vehicle_list,
                                                                            target_count=vehicle_count)
